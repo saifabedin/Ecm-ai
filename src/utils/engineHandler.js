@@ -29,9 +29,9 @@ function createEngineRouter(config) {
 
       // Persist job to DB for status tracking
       await query(
-        `INSERT INTO engine_jobs (id, brand_id, engine_slug, status, created_at)
+        `INSERT INTO engine_jobs (job_id, brand_id, engine_slug, status, created_at)
          VALUES ($1, $2, $3, 'queued', NOW())
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT (job_id) DO NOTHING`,
         [job_id, brand_id, config.slug]
       ).catch(() => {}); // Non-fatal — DB may not be migrated yet
 
@@ -55,8 +55,8 @@ function createEngineRouter(config) {
       const brand_id = req.brand_id;
 
       const result = await query(
-        `SELECT id, brand_id, engine_slug, status, result, error, created_at, updated_at
-         FROM engine_jobs WHERE id = $1 AND brand_id = $2`,
+        `SELECT job_id, brand_id, engine_slug, status, result, error, created_at, updated_at
+         FROM engine_jobs WHERE job_id = $1 AND brand_id = $2`,
         [job_id, brand_id]
       );
 
@@ -68,7 +68,7 @@ function createEngineRouter(config) {
       return success(res, {
         brand_id,
         engine_id: job.engine_slug,
-        job_id: job.id,
+        job_id: job.job_id,
         status: job.status,
         result: job.result || null,
         error: job.error || null,
