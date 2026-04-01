@@ -24,21 +24,28 @@
 ## 2. REPOSITORY MAP
 
 ```
+/home/ubuntu/
+├── ecm-ai-os/
+│   └── backend/           → Express.js API server (ECM brand — internal)
+├── ai-platform/           → n8n workflows, engine configs, DB scripts
 /home/user/
-├── denmatrix-backend/    → Node.js/Express API  (ECM brand internally)
-└── denmatrix-frontend/   → React SPA            (DenMatrix brand publicly)
+├── denmatrix-backend/     → Git repo mirror of ecm-ai-os/backend
+└── denmatrix-frontend/    → React SPA (DenMatrix brand — public)
 ```
 
 ### Backend Repo
 - **GitHub**: `saifabedin/denmatrix-backend`
 - **Dev branch**: `claude/ecm-ai-platform-setup-3kqsm`
+- **Local path**: `/home/ubuntu/ecm-ai-os/backend/` (canonical) + `/home/user/denmatrix-backend/` (git)
 - **Runtime**: Node.js 20 (use `/opt/node20/`)
 - **Framework**: Express.js
-- **ORM**: pg / postgres.js (Neon compatible — no connection pooling outside Neon)
+- **DB Driver**: `pg` with Neon pooler (no connection pooling outside Neon)
+- **Process Manager**: PM2 via `ecosystem.config.js`
 
 ### Frontend Repo
 - **GitHub**: `saifabedin/denmatrix-frontend`
 - **Dev branch**: `claude/ecm-ai-platform-setup-3kqsm`
+- **Local path**: `/home/user/denmatrix-frontend/`
 - **Framework**: React (Vite)
 - **UI Kit**: TBD by project — confirm before scaffolding
 
@@ -157,35 +164,60 @@ N8N_API_KEY=           # for programmatic workflow management
 
 > Each engine has a unique slug, purpose, and n8n workflow trigger.
 > All engines accept `brand_id` and return structured JSON.
+> All engine routes live at: `routes/engines/[slug].js`
 
-| # | Engine Slug | Purpose | Trigger Type |
-|---|---|---|---|
-| 1 | `content-writer` | Long-form blog/article generation | n8n webhook |
-| 2 | `social-caption` | Social media captions (IG/FB/LI/X) | n8n webhook |
-| 3 | `ad-copy` | Paid ad copy (Google/Meta) | n8n webhook |
-| 4 | `seo-optimizer` | SEO title/meta/keyword optimization | n8n webhook |
-| 5 | `lead-scorer` | Lead qualification scoring | n8n webhook |
-| 6 | `email-sequence` | Drip email campaign writer | n8n webhook |
-| 7 | `whatsapp-responder` | WhatsApp automated replies | n8n webhook |
-| 8 | `competitor-intel` | Competitor scraping + analysis | n8n webhook |
-| 9 | `image-prompt` | AI image prompt generator | n8n webhook |
-| 10 | `video-script` | Short-form video scripts | n8n webhook |
-| 11 | `brand-voice` | Brand voice consistency checker | n8n webhook |
-| 12 | `campaign-planner` | Full campaign strategy generator | n8n webhook |
-| 13 | `analytics-insight` | Performance data narrative | n8n webhook |
-| 14 | `audience-builder` | Audience persona creation | n8n webhook |
-| 15 | `trend-spotter` | Trend detection + content angles | n8n webhook |
-
-> **UPDATE THIS TABLE** with exact engine names/slugs as they are confirmed.
+| ID | Engine Name | Slug | Purpose | Trigger Type |
+|---|---|---|---|---|
+| DB | EC Engine DB | `db-migration` | Database Auto-Migration | n8n webhook |
+| 1 | EC Engine 1 | `brand-knowledge` | Brand Knowledge base management & retrieval | n8n webhook |
+| 2 | EC Engine 2 | `market-intelligence` | Market Intelligence — competitor & trend analysis | n8n webhook |
+| 3 | EC Engine 3 | `strategy-planning` | Strategy & Content Planning | n8n webhook |
+| 4 | EC Engine 4 | `content-generation` | Content Generation (long-form, social, email) | n8n webhook |
+| 5 | EC Engine 5 | `image-generation` | Image Generation via AI models | n8n webhook |
+| 6 | EC Engine 6 | `video-generation` | Video Generation Professional 2-Stage pipeline | n8n webhook |
+| 7 | EC Engine 7 | `publishing-spider` | Publishing Spider Web — multi-channel distribution | n8n webhook |
+| 8 | EC Engine 8 | `ads-management` | Ads Management — parent orchestrator | n8n webhook |
+| 8a | EC Engine 8a | `campaign-creator` | Ads Campaign Creator | n8n webhook |
+| 8b | EC Engine 8b | `daily-performance` | Ads Daily Performance reporting | n8n webhook |
+| 8c | EC Engine 8c | `campaign-activate` | Ads Campaign Activate / pause / budget adjust | n8n webhook |
+| 9 | EC Engine 9 | `perf-tracking` | Performance Tracking Spider | n8n webhook |
+| 10 | EC Engine 10 | `optimization-spider` | Optimization Spider — A/B test & iterate | n8n webhook |
+| 11 | EC Engine 11 | `orchestrator-brain` | Orchestrator Brain — master workflow coordinator | n8n webhook |
 
 ### Engine API Pattern
 ```
 POST /api/engines/:engine_slug/run
+Headers: Authorization: Bearer <jwt>
 Body: { brand_id, input, options }
-Response: { job_id, status: "queued", estimated_seconds }
+Response: { success: true, brand_id, engine_id, job_id, status: "queued", estimated_seconds, timestamp }
 
 GET /api/engines/:job_id/status
-Response: { job_id, status, result, error }
+Headers: Authorization: Bearer <jwt>
+Query: ?brand_id=<uuid>
+Response: { success: true, brand_id, engine_id, job_id, status, result, timestamp }
+
+Error Response (all engines):
+{ success: false, brand_id, error_code, message, timestamp }
+```
+
+### Engine Route Files
+```
+src/routes/engines/
+├── db-migration.js
+├── brand-knowledge.js
+├── market-intelligence.js
+├── strategy-planning.js
+├── content-generation.js
+├── image-generation.js
+├── video-generation.js
+├── publishing-spider.js
+├── ads-management.js
+├── campaign-creator.js
+├── daily-performance.js
+├── campaign-activate.js
+├── perf-tracking.js
+├── optimization-spider.js
+└── orchestrator-brain.js
 ```
 
 ---
@@ -387,11 +419,14 @@ _Append notes here during active development sessions._
 
 ```
 [2026-04-01] Session started — initial CLAUDE.md created.
-  - Both repos confirmed empty (README only)
-  - Feature branch claude/ecm-ai-platform-setup-3kqsm exists in both repos
-  - Code location: /home/user/denmatrix-backend, /home/user/denmatrix-frontend
-  - /home/ubuntu/ is a separate user home (ubuntu system user)
-  - Next: scaffold backend (Node/Express), then frontend (React/Vite)
+  - Both GitHub repos confirmed empty (README only)
+  - Feature branch claude/ecm-ai-platform-setup-3kqsm pushed to both repos
+  - Git repos at: /home/user/denmatrix-backend, /home/user/denmatrix-frontend
+  - Working source: /home/ubuntu/ecm-ai-os/backend/ (canonical backend)
+  - /home/ubuntu/ecm-ai-os/ and /home/ubuntu/ai-platform/ created fresh
+  - CLAUDE.md Section 7 updated with all 15 real engine slugs
+  - Backend scaffold created: Express + Neon + JWT + brand_id + 15 engine routes + command router
+  - Next: scaffold frontend (React/Vite + DenMatrix brand)
 ```
 
 ---
