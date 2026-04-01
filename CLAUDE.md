@@ -413,7 +413,68 @@ MCP_API_KEY=
 
 ---
 
-## 14. SESSION NOTES
+## 14. SKILLS SYSTEM
+
+Skills are multi-engine sequences triggered by a single intent.
+Each skill accepts `{ brand_id, goal, context }` and returns a unified result.
+Implemented in `src/agents/planner.js` via `GOAL_ENGINE_MAP`.
+
+| Skill | Trigger | Engine Sequence | Description |
+|---|---|---|---|
+| `generate-ads` | `goal` contains "ads" | `campaign-creator` → `daily-performance` | Create ad campaign then pull initial performance data |
+| `build-landing-page` | `goal` contains "landing-page" | `strategy-planning` → `content-generation` → `image-generation` | Full landing page: strategy, copy, visuals |
+| `lead-outreach` | `goal` contains "lead-outreach" | `brand-knowledge` → `market-intelligence` → `strategy-planning` | Research-first outreach strategy |
+| `full-campaign` | `goal` contains "full-campaign" | `brand-knowledge` → `market-intelligence` → `strategy-planning` → `content-generation` → `image-generation` → `campaign-creator` → `daily-performance` | Complete campaign from brief to live ads |
+
+### How to Invoke a Skill
+```http
+POST /api/command
+{
+  "brand_id": "<uuid>",
+  "command": "/plan",
+  "args": {
+    "goal": "build-landing-page for Q2 product launch",
+    "context": {
+      "product": "ECM AI Suite",
+      "audience": "Marketing managers",
+      "tone": "professional"
+    }
+  }
+}
+```
+
+### Skill Response Shape
+```json
+{
+  "success": true,
+  "brand_id": "<uuid>",
+  "engine_id": "command-router",
+  "command": "/plan",
+  "result": {
+    "agent_run_id": "<uuid>",
+    "goal": "build-landing-page for Q2 product launch",
+    "matched_keyword": "landing-page",
+    "total_steps": 3,
+    "subtasks": [
+      { "step": 1, "engine_slug": "strategy-planning", "status": "pending", "depends_on": null },
+      { "step": 2, "engine_slug": "content-generation", "status": "pending", "depends_on": "strategy-planning" },
+      { "step": 3, "engine_slug": "image-generation",   "status": "pending", "depends_on": "content-generation" }
+    ],
+    "orchestrator_job_id": "<uuid>",
+    "status": "dispatched"
+  },
+  "timestamp": "ISO-8601"
+}
+```
+
+### Adding a New Skill
+1. Add keyword → engine array entry in `src/agents/planner.js` → `GOAL_ENGINE_MAP`
+2. Document it in this table
+3. No route changes needed — planner resolves by keyword matching
+
+---
+
+## 15. SESSION NOTES
 
 _Append notes here during active development sessions._
 
