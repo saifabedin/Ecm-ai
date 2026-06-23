@@ -33,7 +33,7 @@ export default function AdminPanel() {
     setUsers(prev => prev.map(u => u.tenant_id === tenantId ? { ...u, subscription_status: newStatus } : u))
   }
 
-  const MRR = stats ? `₹${((stats.mrr_paise || 0) / 100).toLocaleString('en-IN')}` : '—'
+  const MRR = stats ? `₹${((stats.mrr || 0)).toLocaleString('en-IN')}` : '—'
 
   return (
     <div className="p-6 max-w-7xl mx-auto">

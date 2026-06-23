@@ -21,19 +21,18 @@ async function seedSuperAdmin() {
   try {
     await client.query('BEGIN');
 
-    // Create a tenant for the super admin
-    const tenantRes = await client.query(
-      `INSERT INTO tenants (name, business_name, niche, subscription_status, onboarding_complete)
-       VALUES ($1, $2, 'general', 'active', TRUE)
-       ON CONFLICT DO NOTHING
-       RETURNING id`,
-      [name, name]
-    );
+    // Create a tenant for the super admin (idempotent: SELECT first)
     let tenantId;
-    if (tenantRes.rows.length === 0) {
-      const existing = await client.query('SELECT id FROM tenants WHERE name = $1', [name]);
-      tenantId = existing.rows[0].id;
+    const existingTenant = await client.query('SELECT id FROM tenants WHERE name = $1 LIMIT 1', [name]);
+    if (existingTenant.rows.length > 0) {
+      tenantId = existingTenant.rows[0].id;
     } else {
+      const tenantRes = await client.query(
+        `INSERT INTO tenants (name, business_name, niche, subscription_status, onboarding_complete)
+         VALUES ($1, $2, 'general', 'active', TRUE)
+         RETURNING id`,
+        [name, name]
+      );
       tenantId = tenantRes.rows[0].id;
     }
 
