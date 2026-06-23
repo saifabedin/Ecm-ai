@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const pool = require('../db/client.cjs');
+const logger = require('../utils/logger.cjs');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('[auth] JWT_SECRET environment variable is not set');
@@ -37,7 +38,7 @@ async function register(req, res) {
       const tenantId = tenantResult.rows[0].id;
       const userResult = await client.query(
         'INSERT INTO users (name, email, password_hash, role, tenant_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, tenant_id',
-        [name, email.toLowerCase(), passwordHash, 'owner', tenantId]
+        [name, email.toLowerCase(), passwordHash, 'user', tenantId]
       );
       await client.query('COMMIT');
       const user = userResult.rows[0];
@@ -46,7 +47,8 @@ async function register(req, res) {
         {
           user_id: user.id,
           tenant_id: user.tenant_id,
-          role: 'owner'
+          role: 'user',
+          is_super_admin: false
         },
         JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
@@ -61,7 +63,7 @@ async function register(req, res) {
             tenant_id: user.tenant_id,
             name,
             email: email.toLowerCase(),
-            role: 'owner'
+            role: 'user'
           }
         }
       });
@@ -73,7 +75,14 @@ async function register(req, res) {
     }
 
   } catch (error) {
-    console.error('Registration error:', error);
+    // PG unique_violation code: 23505
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'Email already registered'
+      });
+    }
+    logger.error(`Registration error: ${error.message}`, { stack: error.stack });
     return res.status(500).json({
       success: false,
       error: 'Registration failed'
@@ -93,7 +102,7 @@ async function login(req, res) {
     }
 
     const userResult = await pool.query(
-      'SELECT id, tenant_id, name, email, password_hash, role FROM users WHERE email = $1',
+      'SELECT id, tenant_id, name, email, password_hash, role, is_super_admin FROM users WHERE email = $1',
       [email.toLowerCase()]
     );
 
@@ -115,11 +124,18 @@ async function login(req, res) {
       });
     }
 
+    const tenantResult = await pool.query(
+      'SELECT onboarding_complete FROM tenants WHERE id = $1',
+      [user.tenant_id]
+    );
+    const onboarding_complete = tenantResult.rows.length > 0 ? tenantResult.rows[0].onboarding_complete : false;
+
     const token = jwt.sign(
       {
         user_id: user.id,
         tenant_id: user.tenant_id,
-        role: user.role
+        role: user.role,
+        is_super_admin: user.is_super_admin || false
       },
       JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
@@ -134,13 +150,15 @@ async function login(req, res) {
           tenant_id: user.tenant_id,
           name: user.name,
           email: user.email,
-          role: user.role
+          role: user.role,
+          is_super_admin: user.is_super_admin || false,
+          onboarding_complete
         }
       }
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error(`Login error: ${error.message}`, { stack: error.stack });
     return res.status(500).json({
       success: false,
       error: 'Login failed'
@@ -148,7 +166,38 @@ async function login(req, res) {
   }
 }
 
+async function changePassword(req, res) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Current and new password are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+    }
+    const userResult = await pool.query(
+      'SELECT id, password_hash FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const user = userResult.rows[0];
+    const isValid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    }
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
+    return res.status(200).json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    logger.error(`Change password error: ${error.message}`, { stack: error.stack });
+    return res.status(500).json({ success: false, error: 'Failed to change password' });
+  }
+}
+
 module.exports = {
   register,
-  login
+  login,
+  changePassword,
 };
