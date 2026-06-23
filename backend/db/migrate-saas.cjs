@@ -76,10 +76,8 @@ async function migrateSaas() {
       )
     `);
 
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_subscriptions_tenant ON subscriptions(tenant_id);
-      CREATE INDEX IF NOT EXISTS idx_billing_events_tenant ON billing_events(tenant_id);
-    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_subscriptions_tenant ON subscriptions(tenant_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_billing_events_tenant ON billing_events(tenant_id)`);
 
     await client.query('COMMIT');
     console.log('✅ SaaS migration completed');
