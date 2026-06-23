@@ -53,6 +53,8 @@ process.on('uncaughtException', (err) => {
 // ---------------------------------------------------------------------------
 // Middleware setup
 // ---------------------------------------------------------------------------
+// Trust Nginx reverse proxy for accurate IP in rate limiting
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(securityHeaders);
 app.use(cors({
@@ -83,12 +85,12 @@ message: 'Too many authentication attempts, please try again later.',
 
 app.use('/auth', authLimiter);
 
-// Serve frontend static files
-app.use(express.static(join(__dirname, '../frontend')));
+// Serve frontend static files from built dist
+app.use(express.static(join(__dirname, '../frontend/dist')));
 app.use('/videos', express.static(join(__dirname, '../public/videos')));
 
 app.get('/', (req, res) => {
-  res.sendFile(join(__dirname, '../frontend/index.html'));
+  res.sendFile(join(__dirname, '../frontend/dist/index.html'));
 });
 
 app.use('/', healthRouter);
@@ -97,6 +99,7 @@ app.use('/auth', authRoutes);
 
 // Keep orchestrator open in local/dev so frontend can call it directly.
 app.use('/api', require('./routes/orchestrator.cjs'));
+app.use('/api/admin', require('./routes/admin.cjs'));
 // Knowledge graph (vault parser - authenticated)
 app.use('/api', require('./routes/knowledge-graph.cjs'));
 // Agent shared memory layer
