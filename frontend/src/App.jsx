@@ -31,6 +31,7 @@ import Autopilot from './components/Autopilot'
 import ImageStudio from './components/studio/ImageStudio'
 import VideoStudio from './components/studio/VideoStudio'
 import Settings from './components/Settings'
+import AdminPanel from './components/admin/AdminPanel'
 import Login from './components/auth/Login'
 import Register from './components/auth/Register'
 import Onboarding from './components/auth/Onboarding'
@@ -108,6 +109,7 @@ function App() {
               <Route path="/studio/image" element={<ProtectedRoute><Layout><ImageStudio /></Layout></ProtectedRoute>} />
               <Route path="/studio/video" element={<ProtectedRoute><Layout><VideoStudio /></Layout></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute adminOnly><Layout><AdminPanel /></Layout></ProtectedRoute>} />
 
               {/* Catch-all redirect to Home for any placeholder paths */}
               <Route path="*" element={<Navigate to="/" replace />} />
