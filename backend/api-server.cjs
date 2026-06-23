@@ -101,6 +101,7 @@ app.use('/auth', authRoutes);
 app.use('/api', require('./routes/orchestrator.cjs'));
 app.use('/api/admin', require('./routes/admin.cjs'));
 app.use('/api/onboarding', require('./routes/onboarding.cjs'));
+app.use('/api/billing', require('./routes/billing.cjs'));
 // Knowledge graph (vault parser - authenticated)
 app.use('/api', require('./routes/knowledge-graph.cjs'));
 // Agent shared memory layer
