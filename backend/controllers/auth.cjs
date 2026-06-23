@@ -63,7 +63,9 @@ async function register(req, res) {
             tenant_id: user.tenant_id,
             name,
             email: email.toLowerCase(),
-            role: 'user'
+            role: 'user',
+            is_super_admin: false,
+            onboarding_complete: false
           }
         }
       });
