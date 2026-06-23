@@ -31,6 +31,8 @@ import Autopilot from './components/Autopilot'
 import ImageStudio from './components/studio/ImageStudio'
 import VideoStudio from './components/studio/VideoStudio'
 import Settings from './components/Settings'
+import Billing from './components/Billing'
+import Connections from './components/Connections'
 import AdminPanel from './components/admin/AdminPanel'
 import Login from './components/auth/Login'
 import Register from './components/auth/Register'
@@ -108,6 +110,8 @@ function App() {
               <Route path="/autopilot" element={<ProtectedRoute><Layout><Autopilot /></Layout></ProtectedRoute>} />
               <Route path="/studio/image" element={<ProtectedRoute><Layout><ImageStudio /></Layout></ProtectedRoute>} />
               <Route path="/studio/video" element={<ProtectedRoute><Layout><VideoStudio /></Layout></ProtectedRoute>} />
+              <Route path="/billing" element={<ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
+              <Route path="/connections" element={<ProtectedRoute><Layout><Connections /></Layout></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
               <Route path="/admin" element={<ProtectedRoute adminOnly><Layout><AdminPanel /></Layout></ProtectedRoute>} />
 

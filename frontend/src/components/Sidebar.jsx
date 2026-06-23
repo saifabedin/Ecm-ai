@@ -17,6 +17,8 @@ import {
   Settings,
   Target,
   Shield,
+  CreditCard,
+  Link2,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSidebar } from '../context/SidebarContext'
@@ -63,6 +65,8 @@ const menuItems = [
   { label: 'Knowledge Graph', path: '/knowledge-graph', icon: Network },
   { label: 'Chat', path: '/chat', icon: MessageSquare },
   { label: 'Help Center', path: '/help', icon: HelpCircle },
+  { label: 'Billing', path: '/billing', icon: CreditCard },
+  { label: 'Connections', path: '/connections', icon: Link2 },
   { label: 'Settings', path: '/settings', icon: Settings },
 ]
 
