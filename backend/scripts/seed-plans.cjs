@@ -18,6 +18,7 @@ async function seedPlans() {
       VALUES ($1, $2, $2, $3, $4)
       ON CONFLICT (plan_id) DO UPDATE
         SET name = EXCLUDED.name,
+            display_name = EXCLUDED.display_name,
             price_monthly = EXCLUDED.price_monthly,
             features = EXCLUDED.features
     `, [p.plan_id, p.name, p.price_monthly, JSON.stringify(p.features)]);
