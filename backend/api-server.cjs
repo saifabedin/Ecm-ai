@@ -100,6 +100,7 @@ app.use('/auth', authRoutes);
 // Keep orchestrator open in local/dev so frontend can call it directly.
 app.use('/api', require('./routes/orchestrator.cjs'));
 app.use('/api/admin', require('./routes/admin.cjs'));
+app.use('/api/onboarding', require('./routes/onboarding.cjs'));
 // Knowledge graph (vault parser - authenticated)
 app.use('/api', require('./routes/knowledge-graph.cjs'));
 // Agent shared memory layer
