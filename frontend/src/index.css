@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #ecf3ff;
+  --color-brand-500: #465fff;
+  --color-brand-600: #3451e6;
+  --color-success-50: #ecfdf3;
+  --color-success-100: #d1fadf;
+  --color-success-500: #10b981;
+  --color-success-600: #039855;
+  --color-error-50: #fef3f2;
+  --color-error-100: #fee4e2;
+  --color-error-200: #fecdc9;
+  --color-error-500: #ef4444;
+  --color-error-600: #d92d20;
+  --color-warning-50: #fffaeb;
+  --color-warning-500: #f79009;
+  
+  --shadow-theme-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-theme-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  --shadow-theme-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+}
+
+/* 
+ * TAILWIND 4 CUSTOM VARIANT FOR DARK MODE 
+ * This enables the 'dark:' utility to work with the '.dark' class on the html element
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 transition-colors duration-200 font-['Outfit',sans-serif];
+  }
+
+  /* Robust manual dark mode class support for base element */
+  .dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
+
+  /* Global theme transitions for specific properties */
+  *, *::before, *::after {
+    @apply transition-colors duration-200 border-gray-200 dark:border-gray-800;
+  }
+}
+
+/* Custom styles with smooth transition awareness */
+.menu-item-active {
+  @apply bg-brand-50 text-brand-500 transition-colors duration-200;
+}
+
+.dark .menu-item-active {
+  @apply bg-brand-500/10;
+}
+
+.menu-item-inactive {
+  @apply text-gray-500 hover:bg-gray-50 transition-colors duration-200;
+}
+
+.dark .menu-item-inactive {
+  @apply text-gray-400 hover:bg-white/[0.03];
+}
+
+/* Specific button transition fix */
+button, a {
+  @apply transition-all duration-200 cursor-pointer;
+}
+
+/* Hide scrollbars but allow behavior */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Custom subtle scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}
+.dark .custom-scrollbar {
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
