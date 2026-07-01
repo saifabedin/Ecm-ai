@@ -4,12 +4,27 @@
   "description": "ECM AI Platform — Backend API Server",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node backend/api-server.cjs",
+    "start:worker": "node backend/queues/worker.cjs",
+    "start:mcp": "node backend/mcp/server.cjs",
+    "dev": "nodemon backend/api-server.cjs",
+    "dev:worker": "nodemon backend/queues/worker.cjs",
     "migrate": "node src/database/migrate.js",
+    "migrate:saas": "node backend/db/migrate-saas.cjs",
     "seed": "node src/database/seed.js",
-    "test": "node --test src/**/*.test.js",
-    "lint": "eslint src/"
+    "test": "node --test 'tests/**/*.test.cjs' 'src/**/*.test.js'",
+    "test:watch": "node --test --watch 'tests/**/*.test.cjs'",
+    "lint": "eslint src/ backend/ --ignore-pattern node_modules --ignore-pattern frontend || true",
+    "lint:fix": "eslint src/ backend/ --fix --ignore-pattern node_modules || true",
+    "typecheck": "npx tsc --noEmit || true",
+    "clean": "rm -rf dist build",
+    "health": "curl -s http://localhost:4000/health",
+    "deploy": "bash scripts/deploy.sh",
+    "db:studio": "echo 'DB studio: psql $DATABASE_URL'",
+    "providers:health": "curl -s http://localhost:4000/api/providers/health",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
   },
   "engines": {
     "node": ">=20.0.0"
