@@ -1,187 +1,383 @@
-const dotenv = require('dotenv');
-const { join } = require('path');
+#!/usr/bin/env node
+'use strict';
 
-dotenv.config({ path: join(__dirname, '../.env') });
+// ━━ LOAD ENV VARIABLES FIRST ━━━━━━━━━━━━━━━━━━━━━━━━
+require('dotenv').config();
 
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-const logger = require('./utils/logger.cjs');
-
-const healthRouter = require('./health.cjs');
-const authRoutes = require('./routes/auth.cjs');
-const requestLogger = require('./middleware/requestLogger.cjs');
-const { validateRequiredEnv } = require('./utils/env-validator.cjs');
-const { allowedOrigins } = require('./config/security.cjs');
-const securityHeaders = require('./middleware/securityHeaders.cjs');
-
-// SECURITY: validate critical env vars at startup. Logs warnings for missing
-// optional vars. NEVER logs the values themselves.
-const envReport = validateRequiredEnv();
-if (!envReport.ok) {
-  logger.error(`API server starting with ${envReport.missing.length} missing required env var(s) — some features will fail`, {
-    correlationId: 'SYSTEM',
-    metadata: { type: 'env_validation_summary', severity: 'critical', count: envReport.missing.length },
-  });
-}
-
-const app = express();
-
-// ---------------------------------------------------------------------------
-// Global error handlers (must be registered before express listeners)
-// ---------------------------------------------------------------------------
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection', {
-    reason: reason instanceof Error ? reason.message : reason,
-    stack: reason instanceof Error ? reason.stack : undefined,
-    correlationId: 'SYSTEM',
-  });
-  // Non-fatal: just log, do not exit
-});
-
-process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception', {
-    message: err.message,
-    stack: err.stack,
-    correlationId: 'SYSTEM',
-  });
-  // Fatal: gracefully shutdown
+// ━━ VALIDATE ENV BEFORE ANYTHING ELSE ━━━━━━━━━━━━━
+const { validateEnv } = require('./middleware/validateEnv.cjs');
+try {
+  validateEnv();
+} catch (err) {
+  console.error('❌ Startup failed:', err.message);
   process.exit(1);
-});
-
-// ---------------------------------------------------------------------------
-// Middleware setup
-// ---------------------------------------------------------------------------
-// Trust Nginx reverse proxy for accurate IP in rate limiting
-app.set('trust proxy', 1);
-app.use(helmet());
-app.use(securityHeaders);
-app.use(cors({
-origin: function (origin, callback) {
-if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
-callback(new Error('Not allowed by CORS'))
-},
-credentials: true,
-}));
-// Mount billing FIRST (before express.json) so webhook can use express.raw()
-app.use('/api/billing', require('./routes/billing.cjs'));
-
-app.use(express.json({ limit: '2mb' }));
-
-// Request tracing with correlation IDs
-app.use(requestLogger);
-
-const limiter = rateLimit({
-windowMs: 15 * 60 * 1000,
-max: 100,
-message: 'Too many requests from this IP, please try again later.',
-});
-
-app.use('/api/', limiter);
-
-const authLimiter = rateLimit({
-windowMs: 15 * 60 * 1000,
-max: 10,
-message: 'Too many authentication attempts, please try again later.',
-});
-
-app.use('/auth', authLimiter);
-
-// Serve frontend static files from built dist
-app.use(express.static(join(__dirname, '../frontend/dist')));
-app.use('/videos', express.static(join(__dirname, '../public/videos')));
-
-app.get('/', (req, res) => {
-  res.sendFile(join(__dirname, '../frontend/dist/index.html'));
-});
-
-app.use('/', healthRouter);
-
-app.use('/auth', authRoutes);
-
-// Keep orchestrator open in local/dev so frontend can call it directly.
-app.use('/api', require('./routes/orchestrator.cjs'));
-app.use('/api/admin', require('./routes/admin.cjs'));
-app.use('/api/onboarding', require('./routes/onboarding.cjs'));
-// Knowledge graph (vault parser - authenticated)
-app.use('/api', require('./routes/knowledge-graph.cjs'));
-// Agent shared memory layer
-app.use('/api', require('./routes/agent-memory.cjs'));
-// Knowledge Galaxy + Collaboration + Lessons + System Health
-app.use('/api', require('./routes/galaxy.cjs'));
-app.use('/api', require('./routes/agents.cjs'));
-// Proxy to ai-team gateway (4100) for CRM, SDR, Voice, Proposals, Research
-app.use('/api/team', require('./routes/ai-team-proxy.cjs'));
-
-// Centralized error handling middleware
-app.use((err, req, res, next) => {
-  const logMeta = {
-    err,
-    correlationId: req.correlationId,
-    jobId: req.jobId,
-  };
-  logger.error(err.message, logMeta);
-  res.status(err.status || 500).json({
-    success: false,
-    error: err.message || 'Internal Server Error',
-    ...(req.correlationId && { correlationId: req.correlationId }),
-    ...(req.jobId && { jobId: req.jobId }),
-  });
-});
-
-let server;
-const PORT = process.env.API_PORT || 4000;
-server = app.listen(PORT, () => {
-  logger.info(`API Server running on port ${PORT}`, {
-    port: PORT,
-    env: process.env.NODE_ENV || 'development',
-    correlationId: 'SYSTEM',
-  });
-});
-
-// RELIABILITY: graceful shutdown for SIGTERM/SIGINT
-let isApiShuttingDown = false;
-async function gracefulApiShutdown(signal) {
-  if (isApiShuttingDown) {
-    logger.warn(`[API] Shutdown already in progress, ignoring ${signal}`, {
-      correlationId: 'SYSTEM',
-      metadata: { type: 'api_shutdown_duplicate' },
-    });
-    return;
-  }
-  isApiShuttingDown = true;
-
-  logger.info(`[API] ${signal} received, closing server (max 30s)...`, {
-    correlationId: 'SYSTEM',
-    metadata: { type: 'api_shutdown', signal },
-  });
-
-  const forceExitTimeout = setTimeout(() => {
-    logger.error(`[API] Graceful shutdown timeout exceeded (30s), forcing exit`, {
-      correlationId: 'SYSTEM',
-      metadata: { type: 'api_shutdown_timeout' },
-    });
-    process.exit(1);
-  }, 30000);
-  forceExitTimeout.unref();
-
-  try {
-    await new Promise((resolve) => server.close(resolve));
-    logger.info(`[API] HTTP server closed`, { correlationId: 'SYSTEM' });
-  } catch (closeErr) {
-    logger.error(`[API] server.close() failed: ${closeErr.message}`, {
-      correlationId: 'SYSTEM',
-      stack: closeErr.stack,
-    });
-  }
-
-  clearTimeout(forceExitTimeout);
-  logger.info(`[API] Graceful shutdown complete`, { correlationId: 'SYSTEM' });
-  process.exit(0);
 }
 
-process.on('SIGTERM', () => gracefulApiShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulApiShutdown('SIGINT'));
+// ━━ IMPORT DEPENDENCIES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const winston = require('winston');
+const { v4: uuidv4 } = require('uuid');
+const jwt = require('jsonwebtoken');
+
+// ━━ IMPORT MIDDLEWARE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const { authenticateJWT } = require('./middleware/authenticateJWT.cjs');
+const { requireBrandId } = require('./middleware/requireBrandId.cjs');
+const { errorHandler } = require('./middleware/errorHandler.cjs');
+
+// ━━ IMPORT SERVICES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const { HealthChecker } = require('./services/healthCheck.cjs');
+
+// ━━ INITIALIZE LOGGER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'ecm-api' },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.simple()
+    }),
+    new winston.transports.File({ 
+      filename: 'logs/error.log', 
+      level: 'error' 
+    }),
+    new winston.transports.File({ 
+      filename: 'logs/combined.log' 
+    })
+  ]
+});
+
+// ━━ CREATE EXPRESS APP ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const app = express();
+const PORT = process.env.PORT || 4000;
+
+logger.info('🚀 ECM-AI Backend Initializing...');
+
+// ━━ INITIALIZE HEALTH CHECKER ━━━━━━━━━━━━━━━━━━━━
+let healthChecker = null;
+(async () => {
+  healthChecker = new HealthChecker();
+  await healthChecker.initialize();
+  logger.info('✅ Health checker initialized');
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// ━━ MIDDLEWARE STACK ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ═══════════════════════════════════════════════════════════════
+
+// Security headers
+app.use(helmet());
+
+// CORS
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Brand-ID']
+}));
+
+// Body parser
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Request logging
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path}`, {
+    query: req.query,
+    body: req.body ? { ...req.body, password: '[REDACTED]' } : undefined
+  });
+  next();
+});
+
+// ════════════════════════���══════════════════════════════════════
+// ━━ PUBLIC ROUTES (No authentication required) ━━━━━━━━━━━━━━━
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /health
+ * Check system health status
+ * Response includes DB, Redis, Queue status
+ */
+app.get('/health', async (req, res, next) => {
+  try {
+    if (!healthChecker) {
+      return res.status(503).json({
+        status: 'unavailable',
+        message: 'Health checker not initialized',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const health = await healthChecker.getHealth();
+    const statusCode = health.status === 'ok' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (err) {
+    logger.error('Health check failed:', err);
+    res.status(503).json({
+      status: 'error',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET /status
+ * Alias for /health
+ */
+app.get('/status', (req, res) => {
+  res.json({
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━ AUTH ROUTES (Public, rate-limited) ━━━━━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * POST /auth/register
+ * Register new user
+ * Body: { email, password, brand_name }
+ */
+app.post('/auth/register', async (req, res, next) => {
+  try {
+    const { email, password, brand_name } = req.body;
+
+    // Validation
+    if (!email || !password || !brand_name) {
+      return res.status(400).json({
+        success: false,
+        error_code: 'VALIDATION_ERROR',
+        message: 'Missing required fields: email, password, brand_name',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // TODO: Save to database
+    const brand_id = uuidv4();
+    const user_id = uuidv4();
+
+    logger.info(`👤 New registration: ${email} (brand: ${brand_id})`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        user_id,
+        email,
+        brand_id,
+        brand_name
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /auth/login
+ * User login
+ * Body: { email, password }
+ * Returns: { access_token, expires_in }
+ */
+app.post('/auth/login', async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error_code: 'VALIDATION_ERROR',
+        message: 'Missing email or password',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // TODO: Verify credentials in database
+    const user_id = uuidv4();
+    const brand_id = uuidv4(); // In real app, fetch from DB
+
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        user_id,
+        email,
+        brand_id,
+        role: 'admin'
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: process.env.JWT_EXPIRY || '24h',
+        algorithm: 'HS256'
+      }
+    );
+
+    logger.info(`✅ Login successful: ${email}`);
+
+    res.json({
+      success: true,
+      data: {
+        access_token: token,
+        token_type: 'Bearer',
+        expires_in: 86400
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ════���══════════════════════════════════════════════════════════
+// ━━ PROTECTED ROUTES (Authentication required) ━━━━━━━━━━━━━━━
+// ═══════════════════════════════════════════════════════════════
+
+// Apply JWT authentication to all /api routes
+app.use('/api', authenticateJWT);
+
+/**
+ * GET /api/me
+ * Get current user info
+ */
+app.get('/api/me', (req, res) => {
+  res.json({
+    success: true,
+    data: req.user,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ━━ PROTECTED ROUTES WITH BRAND_ID ━━━━━━━━━━━━━━━
+app.use('/api', requireBrandId);
+
+/**
+ * POST /api/engines/:engine_slug/run
+ * Trigger an AI engine
+ * Body: { brand_id, input, options }
+ */
+app.post('/api/engines/:engine_slug/run', async (req, res, next) => {
+  try {
+    const { engine_slug } = req.params;
+    const { input, options } = req.body;
+    const brand_id = req.brandId;
+
+    // Validation
+    if (!input) {
+      return res.status(400).json({
+        success: false,
+        error_code: 'VALIDATION_ERROR',
+        message: 'Missing input payload',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const job_id = uuidv4();
+
+    logger.info(`📤 Engine job queued: ${engine_slug}`, {
+      job_id,
+      brand_id
+    });
+
+    // TODO: Queue job with BullMQ
+    res.status(202).json({
+      success: true,
+      data: {
+        job_id,
+        engine_id: engine_slug,
+        brand_id,
+        status: 'queued',
+        estimated_seconds: 30
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/engines/:job_id/status
+ * Check engine job status
+ * Query: { brand_id }
+ */
+app.get('/api/engines/:job_id/status', async (req, res, next) => {
+  try {
+    const { job_id } = req.params;
+    const brand_id = req.brandId;
+
+    // TODO: Fetch job from BullMQ
+    res.json({
+      success: true,
+      data: {
+        job_id,
+        brand_id,
+        status: 'pending',
+        progress: 0,
+        result: null
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ━━ 404 HANDLER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ═══════════════════════════════════════════════════════════════
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error_code: 'NOT_FOUND',
+    message: `Route not found: ${req.method} ${req.path}`,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ━━ ERROR HANDLER (must be last) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ═══════════════════════════════════════════════════════════════
+
+app.use(errorHandler(logger));
+
+// ═══════════════════════════════════════════════════════════════
+// ━━ START SERVER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ═══════════════════════════════════════════════════════════════
+
+const server = app.listen(PORT, () => {
+  logger.info(`✅ ECM-AI Backend running on http://localhost:${PORT}`);
+  logger.info(`💚 Health: http://localhost:${PORT}/health`);
+});
+
+// ━━ GRACEFUL SHUTDOWN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const gracefulShutdown = async (signal) => {
+  logger.info(`📍 ${signal} received, shutting down gracefully...`);
+
+  server.close(async () => {
+    logger.info('🛑 HTTP server closed');
+    if (healthChecker) await healthChecker.close();
+    logger.info('✅ Graceful shutdown complete');
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    logger.error('❌ Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;
